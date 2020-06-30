@@ -3,4 +3,5 @@ from angr-dev:$VERSION
 COPY model/$MODEL_DEPENDENCY /home/angr/$MODEL_DEPENDENCY
 run chown angr /home/angr/$MODEL_DEPENDENCY && chmod +x /home/angr/$MODEL_DEPENDENCY
 run su - angr -c "./$MODEL_DEPENDENCY"
+RUN su - angr -c "rm ./install_dep.sh"
 cmd su - angr
