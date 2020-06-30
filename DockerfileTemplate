@@ -1,4 +1,4 @@
-FROM angr_predict:v0.0.1
+FROM angr_predict:$VERSION
 
 RUN su - angr -c "mkdir /home/angr/test && mkdir /home/angr/model"
 COPY ./code/angr-dev/angr/ /home/angr/angr-dev/angr/angr/
