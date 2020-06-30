@@ -5,9 +5,9 @@
 
 
 ### for copy use
-sudo docker cp container:/home/angr/angr-dev/angr/angr ~/angr_timer/code/angr-dev/ 
-sudo docker cp container:/home/angr/angr-dev/claripy/claripy ~/angr_timer/code/angr-dev/ 
-chmod a+w,a+r -R code/angr-dev/angr 
-chmod a+w,a+r -R code/angr-dev/claripy 
+sudo docker cp container:/home/angr/angr-dev/angr/angr ~/angr_timer/code/angr-dev/  
+sudo docker cp container:/home/angr/angr-dev/claripy/claripy ~/angr_timer/code/angr-dev/  
+chmod a+w,a+r -R code/angr-dev/angr  
+chmod a+w,a+r -R code/angr-dev/claripy  
 
 
