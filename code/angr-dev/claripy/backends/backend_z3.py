@@ -9,7 +9,7 @@ import threading
 import weakref
 from functools import reduce
 from decimal import Decimal
-from code.model import Predictor
+from model.Predictor import Predictor
 
 from cachetools import LRUCache
 
@@ -720,9 +720,10 @@ class BackendZ3(Backend):
     def check(solver):
         solver.set('timeout', 1)
         result = solver.check()
+        print(result)
         if result == z3.unknown:
             query_smt2 = solver.to_smt2()
-            predicted_solving_time = Predictor.predict()
+            predicted_solving_time = Predictor.predict(query_smt2)
             if predicted_solving_time > 200:
                 solver.set('timeout', 300)
                 result = solver.check()

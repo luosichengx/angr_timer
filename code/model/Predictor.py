@@ -5,9 +5,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import dgl
-from dgl_treelstm.tree_lstm import TreeLSTM
-from dgl_treelstm.util import extract_root
-from preprocessing import dgl_dataset,query_to_tree,Vocab,Constants
+from .dgl_treelstm.tree_lstm import TreeLSTM
+from .dgl_treelstm.util import extract_root
+from .preprocessing import dgl_dataset,query_to_tree,Vocab,Constants
 
 SSTBatch = collections.namedtuple('SSTBatch', ['graph', 'wordid', 'label', 'filename'])
 def batcher(device):
@@ -39,14 +39,15 @@ class Predictor:
 
     @staticmethod
     def init_static():
+        base_dir = os.path.dirname(os.path.abspath(__file__))
         if not Predictor.smt_vocab:
-            smt_vocab_file = 'smt.vocab'
+            smt_vocab_file = "/".join([base_dir,'smt.vocab'])
             Predictor.smt_vocab = Vocab(filename=smt_vocab_file,
                                         data=[Constants.PAD_WORD, Constants.UNK_WORD,
                                               Constants.BOS_WORD, Constants.EOS_WORD])
         smt_vocab = Predictor.smt_vocab
         if not Predictor.model:
-            pretrained_emb = th.load('smt.pth')
+            pretrained_emb = th.load("/".join([base_dir,'smt.pth']))
             Predictor.model = TreeLSTM(Predictor.smt_vocab.size(),
                                        smt_vocab.size(),
                                        150,#args.h_size,
@@ -56,6 +57,9 @@ class Predictor:
                                        False,#args.attention,
                                        cell_type='childsum',
                                        pretrained_emb=pretrained_emb).to(th.device('cpu'))
+            model = Predictor.model
+            checkpoint = th.load("/".join([base_dir,'model.pkl']), map_location='cpu')
+            model.load_state_dict(checkpoint['model'])
 
     # def load_file(self, args):
     #     train_dataset, test_dataset = query_to_tree.generate_dataset(
@@ -87,8 +91,6 @@ class Predictor:
         device = th.device('cpu')
         test_loader = DataLoader(dataset=dataset,
                                  batch_size=1, collate_fn=batcher(device), shuffle=False, num_workers=0)
-        checkpoint = th.load('model.pkl', map_location='cpu')
-        model.load_state_dict(checkpoint['model'])
         t1 = 250
         model.eval()
         pred = -1
@@ -103,8 +105,3 @@ class Predictor:
             logits = logits.reshape(-1)
             pred = logits
         return pred
-
-with open("mid_time_query0", "r") as f:
-    s = f.read()
-t = Predictor.predict(s)
-print(t)
