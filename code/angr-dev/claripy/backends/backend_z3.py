@@ -9,6 +9,7 @@ import threading
 import weakref
 from functools import reduce
 from decimal import Decimal
+from code.model import Predictor
 
 from cachetools import LRUCache
 
@@ -715,6 +716,21 @@ class BackendZ3(Backend):
                 s.set('timeout', timeout)
         return s
 
+    @staticmethod
+    def check(solver):
+        solver.set('timeout', 1)
+        result = solver.check()
+        if result == z3.unknown:
+            query_smt2 = solver.to_smt2()
+            predicted_solving_time = Predictor.predict()
+            if predicted_solving_time > 200:
+                solver.set('timeout', 300)
+                result = solver.check()
+            # evaluate phase
+            # predictor_count += 1
+            # BackendZ3.predictor_record.update(query_smt2, predicted_solving_time)
+        return result
+    
     def _add(self, s, c, track=False):
         if track:
             for constraint in c:
@@ -775,7 +791,7 @@ class BackendZ3(Backend):
 
             l.debug("Doing a check!")
             #print "CHECKING"
-            if solver.check() != z3.sat:
+            if self.check(solver) != z3.sat:
                 return False
 
             if model_callback is not None:
@@ -808,7 +824,7 @@ class BackendZ3(Backend):
         for i in range(n):
             solve_count += 1
             l.debug("Doing a check!")
-            if solver.check() != z3.sat:
+            if self.check(solver) != z3.sat:
                 break
             model = solver.model()
 
@@ -867,7 +883,7 @@ class BackendZ3(Backend):
 
             solve_count += 1
             l.debug("Doing a check!")
-            if solver.check() == z3.sat:
+            if self.check(solver) == z3.sat:
                 l.debug("... still sat")
                 if model_callback is not None:
                     model_callback(self._generic_model(solver.model()))
@@ -890,7 +906,7 @@ class BackendZ3(Backend):
             solver.push()
             solver.add(expr == lo)
             l.debug("Doing a check!")
-            if solver.check() == z3.sat:
+            if self.check(solver) == z3.sat:
                 if model_callback is not None:
                     model_callback(self._generic_model(solver.model()))
                 vals.add(lo)
@@ -932,7 +948,7 @@ class BackendZ3(Backend):
 
             solve_count += 1
             l.debug("Doing a check!")
-            if solver.check() == z3.sat:
+            if self.check(solver) == z3.sat:
                 l.debug("... still sat")
                 lo = middle
                 vals.add(self._primitive_from_model(solver.model(), expr))
@@ -954,7 +970,7 @@ class BackendZ3(Backend):
             solver.push()
             solver.add(expr == hi)
             l.debug("Doing a check!")
-            if solver.check() == z3.sat:
+            if self.check(solver) == z3.sat:
                 if model_callback is not None:
                     model_callback(self._generic_model(solver.model()))
                 vals.add(hi)
