@@ -1,0 +1,15 @@
+FROM python:3.7.8-slim
+
+RUN apt update
+RUN apt install gcc -y
+COPY requirements.txt .
+RUN pip install torch==1.5.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip install -r requirements.txt
+RUN mkdir test
+COPY code/test/ test/
+RUN mkdir model
+COPY code/model/ model/
+COPY code/angr-dev/angr/ /usr/local/lib/python3.7/site-packages/angr/
+COPY code/angr-dev/claripy/ /usr/local/lib/python3.7/site-packages/claripy/
+
+CMD /bin/bash

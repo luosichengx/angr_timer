@@ -765,7 +765,7 @@ class BackendZ3(Backend):
 
     def _satisfiable(self, extra_constraints=(), solver=None, model_callback=None):
         global solve_count
-
+        
         solve_count += 1
         if len(extra_constraints) > 0:
             solver.push()
