@@ -718,14 +718,13 @@ class BackendZ3(Backend):
 
     @staticmethod
     def check(solver):
-        solver.set('timeout', 1)
+        solver.set('timeout', 1000)
         result = solver.check()
-        print(result)
         if result == z3.unknown:
             query_smt2 = solver.to_smt2()
             predicted_solving_time = Predictor.predict(query_smt2)
-            if predicted_solving_time > 200:
-                solver.set('timeout', 300)
+            if predicted_solving_time < 200:
+                solver.set('timeout', 3000000)
                 result = solver.check()
             # evaluate phase
             # predictor_count += 1

@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 import pyvex
+import time
 
 from ...engine import SimEngineBase
 from ....utils.constants import DEFAULT_STATEMENT
@@ -11,6 +12,9 @@ l = logging.getLogger(name=__name__)
 #pylint:disable=arguments-differ,unused-argument,no-self-use
 
 class VEXMixin(SimEngineBase):
+
+    exe_time = 0
+
     def __init__(self, project, **kwargs):
         super().__init__(project, **kwargs)
         self._vex_expr_handlers = []
@@ -438,12 +442,21 @@ class VEXMixin(SimEngineBase):
 
     def _analyze_vex_defaultexit(self, *a, **kw): return self. _handle_vex_expr(*a, **kw)
     def handle_vex_block(self, irsb: pyvex.IRSB):
+        # my code
+        start_time = time.time()
+
         self.irsb = irsb
         self.tmps = [None]*self.irsb.tyenv.types_used
 
         for stmt_idx, stmt in enumerate(irsb.statements):
             self.stmt_idx = stmt_idx
             self._handle_vex_stmt(stmt)
+
+        end_time = time.time()
+        time_delta = end_time - start_time
+        VEXMixin.exe_time += time_delta
+        # my code end
+
         self.stmt_idx = DEFAULT_STATEMENT
         self._handle_vex_defaultexit(irsb.next, irsb.jumpkind)
 

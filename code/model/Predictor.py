@@ -47,7 +47,7 @@ class Predictor:
                                               Constants.BOS_WORD, Constants.EOS_WORD])
         smt_vocab = Predictor.smt_vocab
         if not Predictor.model:
-            pretrained_emb = th.load("/".join([base_dir,'smt.pth']))
+            pretrained_emb = th.load("/".join([base_dir,'smt.pth']), map_location='cpu')
             Predictor.model = TreeLSTM(Predictor.smt_vocab.size(),
                                        smt_vocab.size(),
                                        150,#args.h_size,

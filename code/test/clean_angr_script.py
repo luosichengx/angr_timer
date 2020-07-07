@@ -2,7 +2,7 @@ import claripy
 import angr
 
 sym_argv = claripy.BVS('sym_argv', 8 * 8)
-p = angr.Project("./other/if.out", load_options={"auto_load_libs": True})
+p = angr.Project('/bin/true', load_options={"auto_load_libs": True})
 state = p.factory.entry_state(args=[p.filename, sym_argv])
 pg = p.factory.simgr(state)
 pg.run()

@@ -1,4 +1,5 @@
 import claripy
+import time
 
 from archinfo.arch_soot import ArchSoot
 
@@ -31,6 +32,8 @@ class SimSuccessors:
     A more detailed description of the successor lists may be found here:
     https://docs.angr.io/core-concepts/simulation#simsuccessors
     """
+
+    suc_time = 0
 
     def __init__(self, addr, initial_state):
         self.addr = addr
@@ -103,6 +106,8 @@ class SimSuccessors:
         :param int exit_ins_addr: The instruction pointer of this exit, which is an integer by default.
         :param int source:        The source of the jump (i.e., the address of the basic block).
         """
+        # my code
+        start_time = time.time()
 
         # First, trigger the SimInspect breakpoint
         state._inspect('exit', BP_BEFORE, exit_target=target, exit_guard=guard, exit_jumpkind=jumpkind)
@@ -122,6 +127,11 @@ class SimSuccessors:
 
         if state.history.jumpkind == 'Ijk_SigFPE_IntDiv' and o.PRODUCE_ZERODIV_SUCCESSORS not in state.options:
             return
+
+        end_time = time.time()
+        time_delta = end_time - start_time
+        SimSuccessors.suc_time += time_delta
+        # my code end
 
         self._categorize_successor(state)
         state._inspect('exit', BP_AFTER, exit_target=target, exit_guard=guard, exit_jumpkind=jumpkind)

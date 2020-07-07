@@ -2,11 +2,13 @@ import logging
 import threading
 
 from .constrained_frontend import ConstrainedFrontend
+import time
 
 l = logging.getLogger("claripy.frontends.full_frontend")
 
 class FullFrontend(ConstrainedFrontend):
     _model_hook = None
+    con_time = 0
 
     def __init__(self, solver_backend, timeout=None, track=False, **kwargs):
         ConstrainedFrontend.__init__(self, **kwargs)
@@ -64,8 +66,14 @@ class FullFrontend(ConstrainedFrontend):
         return solver
 
     def _add_constraints(self):
+        # my code
+        start_time = time.time()
         self._solver_backend.add(self._tls.solver, self.constraints, track=self._track)
         self._to_add = [ ]
+        end_time = time.time()
+        time_delta = end_time - start_time
+        FullFrontend.con_time += time_delta
+        # my code end
 
     #
     # Constraint management
