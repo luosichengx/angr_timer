@@ -49,8 +49,8 @@ class Recorder:
     def add(self):
         record = empty_struct()
         try:
-            if hasattr(angr.engines.vex.engine.SimEngineVEX, "exe_time"):
-                self.engine = angr.engines.vex.engine.SimEngineVEX
+            if hasattr(angr.engines.vex.light.VEXMixin, "exe_time"):
+                self.engine = angr.engines.vex.light.VEXMixin
             else:
                 self.engine = record
         except:

@@ -1,5 +1,7 @@
 
 import os
+
+import time
 import z3
 import ctypes
 import logging
@@ -10,6 +12,7 @@ import weakref
 from functools import reduce
 from decimal import Decimal
 from model.Predictor import Predictor
+from .output_query_data_struct import query_data
 
 from cachetools import LRUCache
 
@@ -105,6 +108,7 @@ class SmartLRUCache(LRUCache):
 from . import Backend
 class BackendZ3(Backend):
     _split_on = { 'And', 'Or' }
+    query_record = query_data()
 
     def __init__(self, reuse_z3_solver=None, ast_cache_size=10000):
         Backend.__init__(self, solver_required=True)
@@ -718,14 +722,18 @@ class BackendZ3(Backend):
 
     @staticmethod
     def check(solver):
+        start_time = time.time()
         solver.set('timeout', 1000)
         result = solver.check()
+        query_smt2 = solver.to_smt2()
         if result == z3.unknown:
-            query_smt2 = solver.to_smt2()
             predicted_solving_time = Predictor.predict(query_smt2)
             if predicted_solving_time < 200:
                 solver.set('timeout', 3000000)
                 result = solver.check()
+        end_time = time.time()
+        time_delta = end_time - start_time
+        BackendZ3.query_record.update(query_smt2, time_delta)
             # evaluate phase
             # predictor_count += 1
             # BackendZ3.predictor_record.update(query_smt2, predicted_solving_time)

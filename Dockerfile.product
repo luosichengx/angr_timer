@@ -8,7 +8,7 @@ RUN pip install -r requirements.txt
 RUN mkdir test
 COPY code/test/ test/
 RUN mkdir model
-COPY code/model/ model/
+COPY code/model/ angr-dev/claripy
 COPY code/angr-dev/angr/ /usr/local/lib/python3.7/site-packages/angr/
 COPY code/angr-dev/claripy/ /usr/local/lib/python3.7/site-packages/claripy/
 
