@@ -9,7 +9,7 @@ from pysmt.operators import __OP_STR__
 sys.setrecursionlimit(1000000)
 # from Tree import varTree as Tree
 import numpy as np
-from preprocessing.query_to_tree import *
+from .query_to_tree import *
 
 class pysmt_query_tree(query_tree):
     # def __init__(self, script_info, time_selection="origin"):

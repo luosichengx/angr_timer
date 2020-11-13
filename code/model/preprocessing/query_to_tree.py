@@ -13,7 +13,7 @@ from pysmt.operators import __OP_STR__
 sys.setrecursionlimit(1000000)
 from collections import defaultdict
 # from .Tree import varTree as Tree
-from preprocessing.Tree import varTree as Tree
+from .Tree import varTree as Tree
 import re
 import numpy as np
 

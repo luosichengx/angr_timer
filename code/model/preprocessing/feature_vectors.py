@@ -1,4 +1,4 @@
-from preprocessing.query_to_tree import *
+from .query_to_tree import *
 import numpy as np
 
 class FV:

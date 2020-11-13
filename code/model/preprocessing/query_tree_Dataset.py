@@ -6,7 +6,7 @@ import torch as th
 import gc
 
 from .query_to_tree import Script_Info, query_tree, QT
-from preprocessing.pysmt_tree import pysmt_query_tree
+from .pysmt_tree import pysmt_query_tree
 
 b = ["[","chmod","dd","expr","hostid","md5sum","nproc","ptx","sha224sum","stdbuf","touch","unlink","b2sum","chown","df",
 "factor","id","mkdir","numfmt","pwd","sha256sum","stty","tr","uptime","base32","chroot","dir","false","join","mkfifo",

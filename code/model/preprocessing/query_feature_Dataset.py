@@ -1,5 +1,5 @@
-from preprocessing.query_tree_Dataset import *
-from preprocessing.feature_vectors import *
+from .query_tree_Dataset import *
+from .feature_vectors import *
 
 class query_feature_Dataset(Dataset):
     def generate_tree_dataset(self, input, time_selection=None, test_filename=None):
