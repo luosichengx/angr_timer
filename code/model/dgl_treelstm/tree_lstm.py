@@ -1,11 +1,88 @@
-import time
-import itertools
-import networkx as nx
-import numpy as np
+import math
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 import dgl
+import torch.nn.utils.rnn as rnn_utils
+
+class DNN(nn.Module):
+    def __init__(self, regression):
+        super(DNN, self).__init__()
+        self.l1 = nn.Linear(50 * 150, 1024)
+        self.l2 = nn.Linear(1024, 512)
+        self.l3 = nn.Linear(512, 256)
+        if regression:
+            self.l4 = nn.Linear(256, 1)
+        else:
+            self.l4 = nn.Linear(256, 2)
+        self.activate = nn.ReLU()
+
+    def forward(self, feature):
+        feature = feature.reshape([feature.shape[0],-1])
+        feature = self.activate(self.l1(feature))
+        feature = self.activate(self.l2(feature))
+        feature = self.activate(self.l3(feature))
+        logits = self.l4(feature)
+        return logits
+
+class RNN(nn.Module):
+    def __init__(self, h_size, regression):
+        super(RNN, self).__init__()
+        self.rnn = nn.RNN(h_size, h_size, batch_first=True)
+        self.regression = regression
+        if regression:
+            self.fc = nn.Linear(h_size, 1)
+        else:
+            self.fc = nn.Linear(h_size, 2)
+
+    def forward(self, feature):
+        logits,_ = self.rnn(feature)
+        logits, out_len = rnn_utils.pad_packed_sequence(logits, batch_first=True)
+        if self.regression:
+            ret = th.zeros([logits.shape[0]])
+        else:
+            ret = th.zeros([logits.shape[0], 2])
+        for i in range(logits.shape[0]):
+            ret[i] = self.fc(logits[i, out_len[i] - 1, :])
+        logits = ret
+        # logits = logits.to("cuda:0")
+        # logits = self.fc(logits[:,-1,:])
+        return logits
+
+class LSTM(nn.Module):
+    def __init__(self, h_size, regression):
+        super(LSTM, self).__init__()
+        self.lstm = nn.LSTM(h_size, h_size, 1, batch_first=True)
+        self.regression = regression
+        if regression:
+            self.fc = nn.Linear(h_size, 1)
+        else:
+            self.fc = nn.Linear(h_size, 2)
+        self.dropout = nn.Dropout(0.2)
+
+    def attention_net(self, x, query, mask=None):  # 软性注意力机制（key=value=x）
+        d_k = query.size(-1)  # d_k为query的维度
+        scores = th.matmul(query, x.transpose(1, 2)) / math.sqrt(d_k)  # 打分机制  scores:[batch, seq_len, seq_len]
+        p_attn = F.softmax(scores, dim=-1)  # 对最后一个维度归一化得分
+        context = th.matmul(p_attn, x).sum(1)  # 对权重化的x求和，[batch, seq_len, hidden_dim]->[batch, hidden_dim]
+        return context, p_attn
+
+    def forward(self, feature):
+        logits,h = self.lstm(feature)
+        logits, out_len = rnn_utils.pad_packed_sequence(logits, batch_first=True)
+        # query = self.dropout(logits)
+        # logits, _ = self.attention_net(query, logits)
+        # logits = self.fc(logits)
+        if self.regression:
+            ret = th.zeros([logits.shape[0]])
+        else:
+            ret = th.zeros([logits.shape[0], 2])
+        for i in range(logits.shape[0]):
+            ret[i] = self.fc(logits[i, out_len[i] - 1, :])
+        logits = ret
+        # logits = logits.to("cuda:0")
+        # logits = self.fc(logits)
+        return logits
 
 class TreeLSTMCell(nn.Module):
     def __init__(self, x_size, h_size):
@@ -106,8 +183,9 @@ class TreeLSTM(nn.Module):
         g.register_reduce_func(self.cell.reduce_func)
         g.register_apply_node_func(self.cell.apply_node_func)
         # feed embedding
-        embeds = self.embedding(batch.wordid)
-        g.ndata['iou'] = self.cell.W_iou(self.dropout(embeds))
+        # embeds = self.embedding(batch.wordid)
+        # g.ndata['iou'] = self.cell.W_iou(self.dropout(embeds))
+        g.ndata['iou'] = self.cell.W_iou(batch.wordid)
         g.ndata['h'] = h
         g.ndata['c'] = c
         # propagate

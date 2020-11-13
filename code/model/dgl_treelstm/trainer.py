@@ -53,10 +53,11 @@ class Trainer(object):
             total_result += metric_result
 
             if step > 0 and step % self.args.log_every == 0:
-                if self.epoch % 20 == 19:
-                    print(pred, batch_label)
+                # if self.epoch % 10 == 9:
+                #     print(th.transpose(th.cat((pred, batch_label)).reshape(2,-1), 0, 1))
                 print("Epoch {:05d} | Step {:05d} | Loss {:.4f} | {:s} {:.4f} | Time(s) {:.4f}".format(
                     self.epoch, step, loss.item(), self.metric_name, metric_result / g.batch_size, np.mean(dur)))
+        self.epoch += 1
         return total_result, total_loss
 
     # helper function for testing
@@ -84,5 +85,7 @@ class Trainer(object):
                 pred = th.argmax(F.log_softmax(logits), 1)
             metric_result = self.metric(pred, batch_label)
             total_result += metric_result
+            # if self.epoch % 10 == 0 and step == 0:
+            #     print(th.transpose(th.cat((pred, batch_label)).reshape(2,-1), 0, 1))
 
         return total_result, total_loss

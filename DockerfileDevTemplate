@@ -6,9 +6,5 @@ COPY ./code/angr-dev/claripy/ /home/angr/angr-dev/claripy/claripy/
 COPY ./code/test/ /home/angr/test/
 COPY ./code/model/ /home/angr/angr-dev/claripy/model/
 COPY ./code/GNU /home/angr/GNU
-RUN chown angr -R /home/angr/angr-dev/angr/angr
-RUN chown angr -R /home/angr/angr-dev/claripy/claripy
-RUN chown angr -R /home/angr/test
-RUN chown angr -R /home/angr/angr-dev/claripy/model
-RUN chown angr -R /home/angr/GNU
+RUN chown angr -R /home/angr/angr-dev/angr/angr /home/angr/angr-dev/claripy/claripy /home/angr/test /home/angr/angr-dev/claripy/model /home/angr/GNU /home/angr/data
 cmd su - angr

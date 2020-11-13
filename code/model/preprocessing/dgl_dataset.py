@@ -4,17 +4,20 @@ from collections import namedtuple
 import networkx as nx
 
 from dgl.graph import DGLGraph
-import torch
+from torch import nn
 
 SMTBatch = namedtuple('SMTBatch', ['graph', 'wordid', 'label'])
 
 class dgl_dataset(object):
-    def __init__(self, data, vocab=None, task="regression"):
+    def __init__(self, data, embedding, vocab=None, task="regression", time_selection="origin"):
         self.trees = []
         self.task = task
+        self.time_selection = time_selection
         self.filename_list = []
         self.vocab = vocab
         self.num_classes = 2
+        self.embedding = nn.Embedding(133, 150)
+        self.embedding.weight.data.copy_(embedding)
         self._load(data)
 
     def _load(self, qt_list):
@@ -34,29 +37,44 @@ class dgl_dataset(object):
                 if child:
                     cid = g.number_of_nodes()
                     try:
-                        word = self.vocab.labelToIdx[child.val]
+                        # word = self.vocab.labelToIdx[child.val]
+                        word = self.featuretotensor(child.val)
                     except:
-                        word = 1
+                        # print("unknown word", child.val)
+                        word = [0] * 150
+                        word[0] = 1
                     g.add_node(cid, x=word, y= 0)
                     g.add_edge(cid, nid)
                     _rec_build(cid, child)
         # add root
+        solving_time = qt.gettime(self.time_selection)
         if self.task == "classification":
-            if isinstance(qt.timeout, bool):
-                result = 0 if qt.timeout else 1
+            if isinstance(solving_time, bool):
+                result = 0 if solving_time else 1
             else:
-                result = 0 if qt.timeout > 250 else 1
+                result = 0 if solving_time > 60 else 1
         else:
-            result = qt.timeout
+            result = solving_time
             if not result:
-                result = -1
+                result = 0.0
         if result == None:
             result = 0
-        g.add_node(0, x=self.vocab.labelToIdx[root.val], y=result)
+        # g.add_node(0, x=self.vocab.labelToIdx[root.val], y=result)
+        g.add_node(0, x=self.featuretotensor(root.val), y=result)
         _rec_build(0, root)
         ret = DGLGraph()
         ret.from_networkx(g, node_attrs=['x', 'y'])
         return ret
+
+    def featuretotensor(self, val):
+        # return self.vocab.labelToIdx[val]
+        if isinstance(val, list):
+            return val
+        else:
+            ind = self.vocab.labelToIdx[val]
+            ret = [0.0] * 150
+            ret[ind] = 1.0
+            return ret
 
     def __getitem__(self, idx):
         return self.trees[idx], self.filename_list[idx]

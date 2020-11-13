@@ -49,7 +49,7 @@ class Predictor:
         if not Predictor.model:
             pretrained_emb = th.load("/".join([base_dir,'smt.pth']), map_location='cpu')
             Predictor.model = TreeLSTM(Predictor.smt_vocab.size(),
-                                       smt_vocab.size(),
+                                       150,
                                        150,#args.h_size,
                                        2,#args.num_classes,
                                        0.5,#args.dropout,
@@ -91,7 +91,7 @@ class Predictor:
         device = th.device('cpu')
         test_loader = DataLoader(dataset=dataset,
                                  batch_size=1, collate_fn=batcher(device), shuffle=False, num_workers=0)
-        t1 = 250
+        t1 = 200
         model.eval()
         pred = -1
         for step, batch in enumerate(test_loader):

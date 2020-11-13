@@ -11,8 +11,9 @@ elif "Linux" in platform.platform():
     from symexe import conf_para
 import multiprocessing as mp
 
+basedir = os.path.dirname(os.path.abspath(__file__))
 cf = configparser.ConfigParser()
-cf.read("./config.ini")
+cf.read(basedir + "/config.ini")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

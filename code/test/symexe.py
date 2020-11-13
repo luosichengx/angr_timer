@@ -1,4 +1,6 @@
 import itertools
+import json
+
 import os
 import signal
 import time
@@ -11,10 +13,11 @@ import psutil
 import logging
 # from rust_procedures import *
 import output_query_data_struct
+from my_dfs import CFS
 
-
+basedir = os.path.dirname(os.path.abspath(__file__))
 cf = configparser.ConfigParser()
-cf.read("./config.ini")
+cf.read(basedir + "/config.ini")
 
 log_path = cf.get("Path", "log")
 logger = logging.getLogger(__name__)
@@ -51,9 +54,14 @@ class Recorder:
         try:
             if hasattr(angr.engines.vex.light.VEXMixin, "exe_time"):
                 self.engine = angr.engines.vex.light.VEXMixin
-            else:
-                self.engine = record
         except:
+            pass
+        try:
+            if hasattr(angr.engines.vex.engine.SimEngineVEX, "exe_time"):
+                self.engine = angr.engines.vex.engine.SimEngineVEX
+        except:
+            pass
+        if self.engine == None:
             self.engine = record
         if hasattr(angr.engines.SimSuccessors, "suc_time"):
             self.successor = angr.engines.SimSuccessors
@@ -70,7 +78,7 @@ class Recorder:
 
 
 def handler(signum, frame):
-    signal.alarm(5)
+    signal.alarm(1)
     raise TimeoutError
 
 
@@ -93,11 +101,22 @@ def run_symexe(path, argv_size=8, withtime=True):
     logger.info('Analysing ' + path)
 
     sym_argv = claripy.BVS('sym_argv', argv_size * 8)
-    sym_argv2 = claripy.BVS('sym_argv', 2 * 8)
-    sym_argv3 = claripy.BVS('sym_argv', 2 * 8)
+    sym_argv2 = claripy.BVS('sym_argv2', 2 * 8)
+    sym_argv3 = claripy.BVS('sym_argv3', 2 * 8)
     try:
         load_lib_bool = cf.getboolean("Angr", "lib")
-        p = angr.Project(path, load_options={"auto_load_libs": load_lib_bool})
+        # p2 = angr.Project(path)
+        p1 = angr.Project(path, load_options={"auto_load_libs": load_lib_bool})
+        ad = list(map(lambda x: x.name, filter(lambda x: x.is_function, p1.loader.extern_object.symbols)))
+        try:
+            ad.remove('getopt_long')
+        except:
+            pass
+        p = p1
+        p = angr.Project(path, load_options={"auto_load_libs": True})
+        for i in ad:
+            if not p.is_hooked(p.loader.find_symbol(i).rebased_addr):
+                p.hook_symbol(i, angr.SIM_PROCEDURES['stubs']['ReturnUnconstrained'](display_name=i, is_stub=True))
     except:
         print('Invalid path: \"' + path + '\"')
         logger.error('invalid path or load lib failed')
@@ -110,51 +129,42 @@ def run_symexe(path, argv_size=8, withtime=True):
     # state = p.factory.entry_state(args=[p.filename, sym_argv], add_options={angr.options.LAZY_SOLVES})
     recorder = Recorder()
     recorder.add()
-    pg = p.factory.simgr(state)
+    pg = p.factory.simgr(state, auto_drop={"unsat"})
     # add_rust_support(p)
-    add_constraint_for_arg(state, sym_argv)
-    cfg, executed_addr, total_addr = draw_cfg(p, recorder)
+    # add_constraint_for_arg(state, sym_argv)
+    cfg, executed_addr, src_addr, lib_addr = draw_cfg(p1, recorder)
+    # cfg, executed_addr, src_addr, lib_addr = None, set(), set(), set()
 
-    path_count = [0]
+    path_count = [0, 0]
 
+    pg.use_technique(CFS())
     # pg.use_technique(angr.exploration_techniques.DFS())
+    # pg.use_technique(angr.exploration_techniques.Oppologist())
     # pg.use_technique(angr.exploration_techniques.Veritesting())
     # pg.use_technique(angr.exploration_techniques.LengthLimiter(max_length=2000))
-    # pg.use_technique(angr.exploration_techniques.LoopSeer(bound=10))
     # pg.use_technique(angr.exploration_techniques.LoopSeer(cfg=cfg, bound=5))
 
     tel = cf.getint("Time", "explore")
     start_time = time.time()
     try:
         if withtime:
-            def my_split(state_list):
-                jump_list = []
-                stay_list = []
-                move_list = []
-                for i in state_list:
-                    if i.addr not in jump_list:
-                        jump_list.append(i.addr)
-                        stay_list.append(i)
-                    else:
-                        move_list.append(i)
-                return stay_list, move_list
 
             def my_step_func(lpg):
-                if len(lpg.active) > 0:
-                    next_ip = lpg.active[0].ip
-                    next_addr = lpg.active[0].addr
-                    next_node = cfg.get_any_node(next_addr)
+                # if len(lpg.active) > 0:
+                    # next_ip = lpg.active[0].ip
+                    # next_addr = lpg.active[0].addr
+                    # next_node = cfg.get_any_node(next_addr)
                     # print(next_ip)
                     # print(next_node)
-                    call_stack = str(lpg.active[0].callstack).split("\n")
-                    call_stack = list(map(lambda x: x[9:18], call_stack))
-                    call_stack_list = []
-                    for c in call_stack:
-                        try:
-                            a = cfg.get_any_node(int(c, 16))
-                            call_stack_list.append(a)
-                        except:
-                            pass
+                    # call_stack = str(lpg.active[0].callstack).split("\n")
+                    # call_stack = list(map(lambda x: x[9:18], call_stack))
+                    # call_stack_list = []
+                    # for c in call_stack:
+                    #     try:
+                    #         a = cfg.get_any_node(int(c, 16))
+                    #         call_stack_list.append(a)
+                    #     except:
+                    #         pass
                     # print(call_stack_list)
                     # try:
                     #     print([str(i) for i in next_node.block.capstone.insns])
@@ -174,23 +184,32 @@ def run_symexe(path, argv_size=8, withtime=True):
                     print(lpg)
                     # if len(recorder.backend_z3.query_record.query_list) < query_list_num:
                     #     recorder.backend_z3.query_record.query_list.append("branch point: " + str(lpg.active[0].history.addr))
-                    # print(lpg.active[0].ip)
+                # if len(lpg.active):
+                #     print(lpg.active[0].ip, cfg.get_any_node(lpg.active[0].addr))
                 try:
-                    if len(lpg.spinning) != 0:
-                        lpg.drop(stash="spinning")
+                    lpg._errored = []
+                    for stash_name in ["spinning", "unsat"]:
+                        if stash_name in lpg._integral_stashes:
+                            lpg.drop(stash=stash_name)
                 except:
                     pass
-                if len(lpg.active) > 2:
-                    lpg.split(stash_splitter=my_split)
-                    lpg.drop(stash="stashed")
 
                 if lpg.deadended:
                     for pg in lpg.deadended:
+                        readable_history = list(map(hex, pg.history.bbl_addrs.hardcopy))
+                        # readable_block = list(map(cfg.get_any_node, pg.history.bbl_addrs.hardcopy))
                         executed_addr.update(pg.history.bbl_addrs.hardcopy)
-                        path_count[0] += 1
+                        const = pg.solver.constraints
+                        # print(pg.solver.eval(pg.solver.temporal_tracked_variables[('api', '?', 'getopt_long', 1)], cast_to=bytes))
+                        result = pg.solver.eval(sym_argv, cast_to=bytes)
+                        # print(pg.posix.dumps(1))
+                        print(result)
+                        # logger.info(result)
+                    path_count[0] += len(lpg.deadended)
                     # if len(recorder.backend_z3.query_record.query_list) < query_list_num:
                     #     recorder.backend_z3.query_record.query_list.append("deadend: " + str(lpg.deadended[0].history.addr))
                     lpg.drop(stash='deadended')
+                path_count[1] = len(lpg.active)
 
                 return lpg
 
@@ -200,8 +219,10 @@ def run_symexe(path, argv_size=8, withtime=True):
             step_count = 0
             for _ in (itertools.count()):
                 if not pg.complete() and pg._stashes['active']:
-                    pg.run(n=100, step_func=my_step_func)
-                    step_count += 1
+                    # pg.run()
+                    pg.run(n=5, step_func=my_step_func)
+                    # a = pg.active[0].history
+                    step_count += 5
 
                     end_time = time.time()
                     time_delta = end_time - start_time
@@ -209,111 +230,187 @@ def run_symexe(path, argv_size=8, withtime=True):
                         logger.warning('Analysing time out 2')
                         break
 
-                    # m = psutil.Process(os.getpid()).memory_percent()
-                    # if m > 20:
-                    #     logger.error("use too many memory")
-                    #     with open("stop.json", "a") as f:
-                    #         f.write(os.path.splitext(os.path.basename(path))[0])
-                    #     break
+                    m = psutil.Process(os.getpid()).memory_percent()
+                    if m > 15:
+                        logger.error("use too many memory")
+                        with open("stop.json", "a") as f:
+                            f.write(os.path.splitext(os.path.basename(path))[0])
+                        break
                     # n = psutil.virtual_memory()[2]
                     # if n > 80 and m > 10:
                     #     logger.error("use too many total memory")
                     #     break
-                    if step_count % 10000 == 0:
-                        logger.info(str(step_count) + " instructions have been executed.")
+                    # if step_count % 1000 == 0:
+                    #     logger.info(str(step_count) + " blocks have been executed.")
                     continue
                 break
             signal.alarm(0)
         else:
             pg.run()
     except TimeoutError:
-        logger.warning('Analysing time out')
         signal.alarm(0)
+        logger.warning('Analysing time out')
     except:
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
+        signal.alarm(0)
+        logger.error(traceback.format_exc(limit=1))
+
+    test_case_addr = executed_addr
 
     end_time = time.time()
     time_delta = end_time - start_time
 
     try:
-        # check_coverage_correctness(cfg, executed_addr, total_addr)
-        executed_addr = executed_addr.intersection(total_addr)
-        block_cov = len(executed_addr) / len(total_addr)
-    except:
+        # check_coverage_correctness(cfg, executed_addr, src_addr)
+        executed_addr = executed_addr.intersection(src_addr)
+        block_cov = len(executed_addr) / len(src_addr)
+        test_case_addr = test_case_addr.intersection(src_addr)
+        test_case_cov = len(test_case_addr) / len(src_addr)
+        executed_addr_lib = executed_addr.intersection(lib_addr)
+        block_cov_lib = len(executed_addr) / len(lib_addr)
+        print(block_cov_lib)
+    except Exception as e:
+        print(e)
         block_cov = 0
+        test_case_cov = 0
 
     # output all kinds of data
     logger.info("total_time: " + str(time_delta))
-    log_time_info(block_cov, path_count, time_delta, recorder)
-    export_selected_query(path, recorder)
-    export_random_query(path, recorder)
+    log_time_info(block_cov, path_count, time_delta, recorder, path, test_case_cov, block_cov_lib)
+    if cf.getboolean("Angr", "output"):
+        export_selected_query(path, recorder)
+        export_random_query(path, recorder)
     export_pathgroup(path, pg, sym_argv, time_delta)
     logger.removeHandler(log_handler)
 
 
 def add_constraint_for_arg(state, sym_argv):
     for byte in sym_argv.chop(8):
-        state.add_constraints(byte != '\x00')  # null
-        state.add_constraints(byte >= ' ')  # '\x20'
+        # state.add_constraints(byte != '\x00')  # null
+        # state.add_constraints(byte >= ' ')  # '\x20'
         state.add_constraints(byte <= '~')  # '\x7e'
 
 
-def check_coverage_correctness(cfg, executed_addr, total_addr):
+def check_coverage_correctness(cfg, executed_addr, src_addr):
     print(len(executed_addr))
-    dif_addr = executed_addr - total_addr
-    executed_addr = executed_addr.intersection(total_addr)
-    print(len(executed_addr))
-    print(len(total_addr))
+    # print(executed_addr)
+    dif_addr = executed_addr - src_addr
     no_list = []
+    # print("coverage_miss_list")
     for addr in dif_addr:
-        no_list.append(cfg.get_any_node(addr))
+        node = cfg.get_any_node(addr)
+        if node:
+            no_list.append(node)
+    no_list = sorted(no_list, key=lambda x: x.addr)
+    # for i in no_list:
+    #     print(i, hex(i.addr))
+    dif_addr = src_addr - executed_addr
+    executed_addr = executed_addr.intersection(src_addr)
+    print(len(executed_addr))
+    print(len(src_addr))
+    print(src_addr)
+    no_list = []
+    print("executed_miss_list")
+    for addr in dif_addr:
+        node = cfg.get_any_node(addr)
+        if node:
+            no_list.append(node)
+    no_list = sorted(no_list, key=lambda x:x.addr)
     for i in no_list:
-        print(i)
-    print("true_list")
+        print(i, hex(i.addr))
+    # print("executed_list")
     yes_list = []
     for addr in executed_addr:
-        yes_list.append(cfg.get_any_node(addr))
-    for i in yes_list:
-        print(i)
+        node = cfg.get_any_node(addr)
+        if node:
+            yes_list.append(node)
+    yes_list = sorted(yes_list, key=lambda x:x.addr)
+    # for i in yes_list:
+    #     print(i, hex(i.addr))
+
     return executed_addr
 
 
 def draw_cfg(p, recorder):
     cfg = None
-    total_addr = set()
+    src_addr = set()
     executed_addr = set()
+    lib_addr = set()
     try:
         signal.signal(signal.SIGALRM, handler)
-        signal.alarm(10)
         cfg = p.analyses.CFGEmulated()
-        signal.alarm(0)
-    except TimeoutError:
-        signal.alarm(0)
-        cfg = p.analyses.CFGFast()
     except:
-        cfg = p.analyses.CFGFast()
+        traceback.print_exc()
+    if not cfg:
+        try:
+            cfg = p.analyses.CFGFast()
+        except:
+            traceback.print_exc()
+            pass
+    # a = set(map(lambda x:x._name.split("+")[0] if x._name else "", list(cfg.graph.nodes)))
+    # f = list(map(lambda x:p.loader.find_symbol(x), a))
+    # b = list(filter(lambda x: not x.is_extern if x else False, f))
     try:
         if cfg != None:
+            g = cfg.graph
             main_obj = p.loader.main_object.get_symbol('main')
-            own_addr = [main_obj.linked_addr, main_obj.rebased_addr]
-            i = 0
-            while (i < len(own_addr)):
-                new_node = cfg.get_any_node(own_addr[i])
-                if new_node is not None:
-                    for succ_block in new_node.successors:
-                        if succ_block.addr not in own_addr:
-                            own_addr.append(succ_block.addr)
-                i += 1
-            total_addr = set(own_addr)
+            if main_obj != None:
+                own_addr = [main_obj.linked_addr]
+            else:
+                own_addr = [p.entry]
+            own_node = [cfg.get_any_node(main_obj.linked_addr)]
+            import networkx
+            main_node = cfg.get_any_node(main_obj.linked_addr)
+            print(networkx.dfs_tree(cfg.graph, main_node, depth_limit=10))
+            try:
+                with open("/home/lsc/lsc/core6_src_function.json", "r") as f:
+                    data = f.read()
+                    fun_list = json.loads(data)
+                own_node = list(filter(lambda x: x.name.split("+")[0] in fun_list['function_list'] if x.name else False, cfg.graph.nodes))
+                own_addr = list(map(lambda x: x.addr, own_node))
+                lib_addr = set(map(lambda x: x.addr, filter(lambda x:x not in own_node, cfg.graph.nodes)))
+            except:
+                own_node = list(filter(lambda x: x.name.split("+")[0] == "main" if x.name else False, cfg.graph.nodes))
+                own_addr = list(map(lambda x: x.addr, own_node))
+                i = 0
+                while (i < len(own_addr)):
+                    # new_node = cfg.get_any_node(own_addr[i])
+                    new_node = own_node[i]
+                    if new_node is not None:
+                        if new_node._name:
+                            if new_node._name in ["exit", "printf_parse", "quote"] \
+                                    or "quote" in new_node._name or "printf" in new_node._name:
+                            # if new_node._name in ["version_etc", "exit", "version_etc_va", "printf_parse", "quote"] \
+                            #         or "quote" in new_node._name or "printf" in new_node._name:
+                                if new_node._name != "quote_name":
+                                    i += 1
+                                    continue
+                        for succ_block in new_node.successors:
+                            # if succ_block.addr not in own_addr and succ_block.addr > main_obj.rebased_addr and succ_block.addr < 0x700000:
+                            # if succ_block.addr not in own_addr:
+                            if succ_block not in own_node:
+                                own_addr.append(succ_block.addr)
+                                # print(succ_block)
+                                own_node.append(succ_block)
+                            else:
+                                # print(succ_block.name)
+                                pass
+                    i += 1
+                lib_addr = set(map(lambda x: x.addr, filter(lambda x: x not in own_node, cfg.graph.nodes)))
+            # own_addr = set(map(lambda x:x.addr, cfg.graph.nodes))
+            src_addr = set(own_addr)
+            print(p.filename, len(src_addr))
         else:
             logger.error('cfg recover failed')
-            total_addr.add(None)
+            src_addr.add(None)
     except:
+        traceback.print_exc()
         pass
     try:
         query_list_num = 100
         recorder.engine.exe_time = 0
         recorder.successor.suc_time = 0
+        recorder.backend_z3.query_record.sol_time = 0
         recorder.backend_z3.query_record.list_num = query_list_num
     except:
         pass
@@ -322,7 +419,7 @@ def draw_cfg(p, recorder):
         recorder.backend_z3.query_record.time_output_addr = os.path.join(sol_time_dir, "solver_time.log")
     except:
         pass
-    return cfg, executed_addr, total_addr
+    return cfg, executed_addr, src_addr, lib_addr
 
 
 """ export query of single file"""
@@ -339,9 +436,11 @@ def export_random_query(path, recorder):
         print("output query failed")
 
 
-def log_time_info(block_cov, path_count, time_delta, recorder):
+def log_time_info(block_cov, path_count, time_delta, recorder, filename, test_case_cov, block_cov_lib):
     try:
         logger.info("block coverage: " + str(block_cov))
+        # logger.info("case: " + str(test_case_cov))
+        logger.info("lib: " + str(block_cov_lib))
         logger.info("paths: " + str(path_count[0]))
         logger.info("solver_time: " + str(recorder.backend_z3.query_record.sol_time))
         logger.info("add_con_time: " + str(recorder.frontend.con_time))
@@ -359,8 +458,13 @@ def log_time_info(block_cov, path_count, time_delta, recorder):
         time_dir = cf.get("Path", "time")
         time_deltas = recorder.backend_z3.query_record.time_list
         with open(os.path.join(time_dir, "solver_time.log"), "a") as f:
-            for time_delta in time_deltas:
-                f.write(time_delta)
+            if len(time_deltas):
+                try:
+                    f.write(filename.split("/")[-1] + "\n")
+                except:
+                    pass
+                for time_delta in time_deltas:
+                    f.write(str(time_delta) + "\n")
                 recorder.backend_z3.query_record.time_list = []
     except:
         pass

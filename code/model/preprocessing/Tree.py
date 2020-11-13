@@ -1,22 +1,26 @@
 import os
 import torch
 
-op = ["forall","exists","and","or","not","distinct","implies","iff","symbol","function","real_constant",
-      "bool_constant","int_constant","str_constant","plus","minus","times","le","lt","equals",
-      "ite","toreal","bv_constant","bvnot","bvand","bvor","bvxor","concat","extract","rotation",
-      "extend","zero_extend","sign_extend","bvult","bvule","bvuge","bvugt","bvneg","bvadd","bvsub","bvmul","bvudiv",
-      "bvurem","bvlshl","bvlshr","bvrol","bvror","bvzext","bvsext","bvslt","bvsle","bvcomp","bvsdiv",
-      "bvsrem","bvashr","str_length","str_concat","str_contains","str_indexof","str_replace","str_substr",
-      "str_prefixof","str_suffixof","str_to_int","int_to_str","str_charat","select","store","value",
-      "div","pow","algebraic_constant","bvtonatural","_to_fp","=","bvsge","compressed_op","unknown"]
+pysmt_op = ["forall", "exists", "and", "or", "not", "implies", "iff", "symbol", "function", "real_constant", "bool_constant",
+      "int_constant", "str_constant", "+", "-", "*", "<=", "<", "=", "ite", "toreal", "bv_constant", "bvnot", "bvand",
+      "bvor", "bvxor", "concat", "extract", "bvult", "bvule", "bvneg", "bvadd", "bvsub", "bvmul", "bvudiv", "bvurem",
+      "bvshl", "bvlshr", "bvrol", "bvror", "zero_extend", "sign_extend", "bvslt", "bvsle", "bvcomp", "bvsdiv", "bvsrem",
+      "bvashr", "str.len", "str.++", "str.contains", "str.indexof", "str.replace", "str.substr", "str.prefixof",
+      "str.suffixof", "str.to_int", "str.from_int", "str.at", "select", "store", "value", "/", "^",
+      "algebraic_constant", "bv2nat"]
 
-# op = ["not","bvadd","bvule","extract","ite","and","or","distinct","bvmul","concat","bvashr",
-#       "bvuge","bvugt","bvnot","bvor","bvsle","bvsub","bvsgt","zero_extend","bvshl","bvsge","bvlshr","sign_extend",
-#       "bvurem","bvudiv","bvxor","bvand"]
+lib_op = ["compressed_op", "unknown", "distinct", ">=", ">", "bvuge", "bvugt", "bvsge", "bvsgt", "str.in_re",
+          "str.to_re", "to_fp",  "re.range", "re.union", "re.++", "re.+", "re.*", "re.allchar", "re.none"]
 
-si_op = ["extract","zero_extend","sign_extend","_to_fp"]
+fp_op = ["fp", "fp.neg", "fp.isZero", "fp.isNormal", "fp.isSubnormal", "fp.isPositive", "fp.isInfinite", "fp.isNan",
+         "fp.eq", "fp.roundToIntegral", "fp.rem", "fp.sub", "fp.sqrt", "fp.lt", "fp.leq", "fp.gt", "fp.geq", "fp.abs",
+         "fp.add", "fp.div", "fp.min", "fp.max", "fp.mul", "fp.to_sbv", "fp.to_ubv"]
 
-tri_op = ["ite"]
+op = pysmt_op + lib_op
+
+none_op = ["extract", "zero_extend", "sign_extend", "to_fp", "repeat", "+oo", "-oo"]
+
+tri_op = ["ite", "str.indexof", "str.replace", "str.substr", "store"]
 
 bv_constant = "constant"
 bool_constant = "constant"
@@ -35,12 +39,15 @@ class Tree:
                 self.name = "var"
             else:
                 self.name = "mid_val"
+        elif isinstance(val, Tree):
+            raise TypeError("The first argument should be string value of tree node, not tree instance")
         elif val != None:
-            raise ValueError
+            raise ValueError(val + " is not in symbol table")
         self.val = val
         for child in [left, mid, right]:
             if child and not isinstance(child,Tree):
-                raise ValueError
+                # print(child)
+                raise ValueError("tree child is not a tree instance")
         self.left = left
         self.mid = mid
         self.right = right
@@ -80,9 +87,9 @@ class varTree(Tree):
         for child in [self.left, self.mid, self.right]:
             if child:
                 self.update(child)
-        if self.val == "concat":
-            self.reduce_concat()
-            self.compress_depth -= 1
+        # if self.val == "concat":
+        #     self.reduce_concat()
+        #     self.compress_depth -= 1
 
     def update(self, child):
         self.depth = max(self.depth, child.depth + 1)
@@ -96,15 +103,13 @@ class varTree(Tree):
             raise ValueError
         if not self.mid:
             raise ValueError
-        if self.right:
-            raise ValueError
         var = set()
         var.update(self.left.var)
         var.update(self.mid.var)
         if self.left.var == var and self.left.depth >= self.mid.depth:
-            self.replace_children(self.mid)
-        elif self.mid.var == var and self.left.depth <= self.mid.depth:
             self.replace_children(self.left)
+        elif self.mid.var == var and self.left.depth <= self.mid.depth:
+            self.replace_children(self.mid)
         elif self.left.depth > self.mid.depth:
             self.replace_children(self.left)
         else:
@@ -131,6 +136,7 @@ class varTree(Tree):
     #             self.replace_children(children)
 
     def replace_children(self, tree):
+        self.val = tree.val
         left, mid, right = tree.left, tree.mid, tree.right
         self.left, self.mid, self.right = left, mid, right
 

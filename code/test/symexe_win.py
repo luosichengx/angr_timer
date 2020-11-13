@@ -9,13 +9,12 @@ import angr
 import claripy
 import psutil
 import logging
-from rust_procedures import *
+# from rust_procedures import *
 import output_query_data_struct
 
-from write_c import write_constraints, write_results
-
+basedir = os.path.dirname(os.path.abspath(__file__))
 cf = configparser.ConfigParser()
-cf.read("./config.ini")
+cf.read(basedir + "/config.ini")
 
 log_path = cf.get("Path", "log")
 logger = logging.getLogger(__name__)
@@ -51,9 +50,17 @@ class Recorder:
 
     def add(self):
         record = empty_struct()
-        if hasattr(angr.engines.vex.engine.SimEngineVEX, "exe_time"):
-            self.engine = angr.engines.vex.engine.SimEngineVEX
-        else:
+        try:
+            if hasattr(angr.engines.vex.light.VEXMixin, "exe_time"):
+                self.engine = angr.engines.vex.light.VEXMixin
+        except:
+            pass
+        try:
+            if hasattr(angr.engines.vex.engine.SimEngineVEX, "exe_time"):
+                self.engine = angr.engines.vex.engine.SimEngineVEX
+        except:
+            pass
+        if self.engine == None:
             self.engine = record
         if hasattr(angr.engines.SimSuccessors, "suc_time"):
             self.successor = angr.engines.SimSuccessors
@@ -63,7 +70,7 @@ class Recorder:
             self.backend_z3 = claripy._backends_module.backend_z3.BackendZ3
         else:
             self.backend_z3 = record
-        if hasattr(claripy.frontends.full_frontend.FullFrontend, "add_con_time"):
+        if hasattr(claripy.frontends.full_frontend.FullFrontend, "con_time"):
             self.frontend = claripy.frontends.full_frontend.FullFrontend
         else:
             self.frontend = record
@@ -115,7 +122,7 @@ def run_symexe(path, argv_size=8, withtime=True):
     # add_constraint_for_arg(state, sym_argv)
     cfg, executed_addr, total_addr = draw_cfg(p, recorder)
 
-    path_count = [0]
+    path_count = [0, 0]
 
     pg.use_technique(angr.exploration_techniques.DFS())
     # pg.use_technique(angr.exploration_techniques.Veritesting())
@@ -129,32 +136,36 @@ def run_symexe(path, argv_size=8, withtime=True):
         if withtime:
             def my_split(state_list):
                 jump_list = []
-                stay_list = []
+                stay_list = state_list[:min(path_count[1], 120)]
                 move_list = []
-                for i in state_list:
-                    if i.addr not in jump_list:
-                        jump_list.append(i.addr)
-                        stay_list.append(i)
+                for i in range(path_count[1],len(state_list)):
+                    state = state_list[i]
+                    if state.addr not in jump_list:
+                        jump_list.append(state.addr)
+                        stay_list.append(state)
                     else:
-                        move_list.append(i)
+                        move_list.append(state)
+                    if len(stay_list) >= 100:
+                        move_list = move_list + state_list[i + 1:]
+                        break
                 return stay_list, move_list
 
             def my_step_func(lpg):
-                if len(lpg.active) > 0:
-                    next_ip = lpg.active[0].ip
-                    next_addr = lpg.active[0].addr
-                    next_node = cfg.get_any_node(next_addr)
+                # if len(lpg.active) > 0:
+                    # next_ip = lpg.active[0].ip
+                    # next_addr = lpg.active[0].addr
+                    # next_node = cfg.get_any_node(next_addr)
                     # print(next_ip)
                     # print(next_node)
-                    call_stack = str(lpg.active[0].callstack).split("\n")
-                    call_stack = list(map(lambda x: x[9:18], call_stack))
-                    call_stack_list = []
-                    for c in call_stack:
-                        try:
-                            a = cfg.get_any_node(int(c, 16))
-                            call_stack_list.append(a)
-                        except:
-                            pass
+                    # call_stack = str(lpg.active[0].callstack).split("\n")
+                    # call_stack = list(map(lambda x: x[9:18], call_stack))
+                    # call_stack_list = []
+                    # for c in call_stack:
+                    #     try:
+                    #         a = cfg.get_any_node(int(c, 16))
+                    #         call_stack_list.append(a)
+                    #     except:
+                    #         pass
                     # print(call_stack_list)
                     # try:
                     #     print([str(i) for i in next_node.block.capstone.insns])
@@ -172,25 +183,35 @@ def run_symexe(path, argv_size=8, withtime=True):
                     #         os.system('kill %d' % os.getpid())
                 if len(lpg.active) > 1:
                     print(lpg)
+                    # for pg in lpg.active:
+                    #     print(lpg.active[0].history.bbl_addrs.hardcopy)
+                    #     executed_addr.update(lpg.active[0].history.bbl_addrs.hardcopy)
                     # if len(recorder.backend_z3.query_record.query_list) < query_list_num:
                     #     recorder.backend_z3.query_record.query_list.append("branch point: " + str(lpg.active[0].history.addr))
                     # print(lpg.active[0].ip)
                 try:
-                    if len(lpg.spinning) != 0:
-                        lpg.drop(stash="spinning")
+                    lpg._errored = []
+                    for stash_name in ["spinning", "unsat"]:
+                        if stash_name in lpg._integral_stashes:
+                            lpg.drop(stash=stash_name)
+                    # if len(lpg.spinning) != 0:
+                    #     lpg.drop(stash="spinning")
                 except:
                     pass
                 if len(lpg.active) > 2:
                     lpg.split(stash_splitter=my_split)
                     lpg.drop(stash="stashed")
 
+                # if len(lpg.active):
+                #     executed_addr.update(lpg.active[0].history.bbl_addrs.hardcopy)
                 if lpg.deadended:
                     for pg in lpg.deadended:
                         executed_addr.update(pg.history.bbl_addrs.hardcopy)
-                        path_count[0] += 1
+                    path_count[0] += len(lpg.deadended)
                     # if len(recorder.backend_z3.query_record.query_list) < query_list_num:
                     #     recorder.backend_z3.query_record.query_list.append("deadend: " + str(lpg.deadended[0].history.addr))
                     lpg.drop(stash='deadended')
+                path_count[1] = len(lpg.active)
 
                 return lpg
 
@@ -227,19 +248,21 @@ def run_symexe(path, argv_size=8, withtime=True):
         else:
             pg.run()
     except TimeoutError:
+        signal.alarm(0)
         logger.warning('Analysing time out')
-        # signal.alarm(0)
     except:
-        logger.error(traceback.format_exc())
+        signal.alarm(0)
+        logger.error(traceback.format_exc(limit=1))
 
     end_time = time.time()
     time_delta = end_time - start_time
 
     try:
-        # check_coverage_correctness(cfg, executed_addr, total_addr)
+        check_coverage_correctness(cfg, executed_addr, total_addr)
         executed_addr = executed_addr.intersection(total_addr)
         block_cov = len(executed_addr) / len(total_addr)
-    except:
+    except Exception as e:
+        print(e)
         block_cov = 0
 
     # output all kinds of data
@@ -260,21 +283,37 @@ def add_constraint_for_arg(state, sym_argv):
 
 def check_coverage_correctness(cfg, executed_addr, total_addr):
     print(len(executed_addr))
-    dif_addr = executed_addr - total_addr
+    print(executed_addr)
+    dif_addr = total_addr - executed_addr
     executed_addr = executed_addr.intersection(total_addr)
     print(len(executed_addr))
     print(len(total_addr))
+    print(total_addr)
     no_list = []
+    print("false_list")
     for addr in dif_addr:
-        no_list.append(cfg.get_any_node(addr))
+        node = cfg.get_any_node(addr)
+        if node:
+            no_list.append(node)
+    no_list = sorted(no_list, key=lambda x:x.addr)
     for i in no_list:
-        print(i)
+        print(i, hex(i.addr))
     print("true_list")
     yes_list = []
     for addr in executed_addr:
-        yes_list.append(cfg.get_any_node(addr))
+        node = cfg.get_any_node(addr)
+        if node:
+            yes_list.append(node)
+    yes_list = sorted(yes_list, key=lambda x:x.addr)
     for i in yes_list:
-        print(i)
+        print(i, hex(i.addr))
+
+    # a = [hex(x.addr) for x in yes_list]
+    # a.sort()
+    # b = [hex(x.addr) for x in no_list]
+    # b.sort()
+    # print(a)
+    # print(b)
     return executed_addr
 
 
@@ -282,18 +321,17 @@ def draw_cfg(p, recorder):
     cfg = None
     total_addr = set()
     executed_addr = set()
-    # try:
-    #     signal.signal(signal.SIGALRM, handler)
-    #     signal.alarm(10)
-    #     cfg = p.analyses.CFGEmulated()
-    #     signal.alarm(0)
-    # except TimeoutError:
-    #     signal.alarm(0)
-    #     cfg = p.analyses.CFGFast()
-    # except:
-    #     cfg = p.analyses.CFGFast()
-    if cfg == None:
+    try:
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(10)
+        cfg = p.analyses.CFGEmulated()
+        signal.alarm(0)
+    except:
+        signal.alarm(0)
+    try:
         cfg = p.analyses.CFGFast()
+    except:
+        pass
     try:
         if cfg != None:
             main_obj = p.loader.main_object.get_symbol('main')
@@ -303,6 +341,7 @@ def draw_cfg(p, recorder):
                 new_node = cfg.get_any_node(own_addr[i])
                 if new_node is not None:
                     for succ_block in new_node.successors:
+                        # if succ_block.addr not in own_addr and succ_block.addr > main_obj.rebased_addr and succ_block.addr < 0x700000:
                         if succ_block.addr not in own_addr:
                             own_addr.append(succ_block.addr)
                 i += 1
@@ -336,6 +375,7 @@ def export_random_query(path, recorder):
     try:
         with open(output_path, 'w') as f:
             for i in recorder.backend_z3.query_record.query_list:
+                f.write("filename: " + path + "\n")
                 f.write(i + "\n")
                 recorder.backend_z3.query_record.query_list = []
     except:
@@ -350,6 +390,7 @@ def log_time_info(block_cov, path_count, time_delta, recorder):
         logger.info("add_con_time: " + str(recorder.frontend.con_time))
         logger.info("execute_time: " + str(recorder.engine.exe_time))
         logger.info("add_successor_time: " + str(recorder.successor.suc_time))
+        logger.info("query_number: " + str(recorder.backend_z3.query_record.query_index - 1))
         logger.info("time_per: " + str(
             (recorder.engine.exe_time + recorder.successor.suc_time) / time_delta))
         recorder.frontend.con_time = 0
@@ -395,13 +436,6 @@ def export_selected_query(path, recorder):
 
 
 def export_pathgroup(path, pg, sym_argv=None, time_delta=0):
-    # calculate input and output it
-    # for dd in pg.deadended:
-    #     res = dd.solver.eval(sym_argv, cast_to=bytes)
-    #     print(res)
-    #     write_results(path, time_delta, res)
-    #     write_constraints(path, dd, time_delta, res)
-
     # output crash info
     for err in pg.errored:
         print('[-] Error: ' + repr(err))
@@ -413,7 +447,7 @@ def export_pathgroup(path, pg, sym_argv=None, time_delta=0):
     except:
         pass
 
-
+"""
 def add_rust_support(p):
     if "rust" in p.filename:
         # for obj in p.loader.initial_load_objects:
@@ -429,7 +463,7 @@ def add_rust_support(p):
         p.hook_symbol('_ZN2io5stdio6_print20h47445faa595ef503E6gE', angr.SIM_PROCEDURES['libc']['printf']())
         p.hook_symbol('_ZN6string13_$LT$impl$GT$9to_string9to_string21h12836934065809422381E', to_string())
         # p.hook_symbol('_ZN9panicking9panic_fmt20h4c8d12e3c05f3b8cZEKE', angr.SIM_PROCEDURES['stubs']['ReturnUnconstrained']())
-
+"""
 
 def conf_para(args, bin_path):
     print('[*] Analysing...')
